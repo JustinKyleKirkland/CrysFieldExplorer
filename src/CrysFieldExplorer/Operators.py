@@ -1,190 +1,411 @@
+"""
+CrysFieldExplorer - A program for fast optimization of CEF Parameters
+Copyright (c) 2023 Kyle Ma
+Licensed under the terms of the LICENSE file included in the project.
+
+This module implements the quantum operators and Stevens operators for rare earth ions.
+"""
+
+from typing import Dict, List
+
 import numpy as np
+import numpy.typing as npt
 from numpy import sqrt
-import pandas as pd
-import pdb
 
-print('-'*55 + '\n'+
-    '|                CrysFieldExplorer 1.0.0              |\n' +
-    '|   A program for fast optimization of CEF Parameters |\n' +
-    '|   -Developed by Kyle Ma                             |\n' +
-    '|   Please cite  J. Appl. Cryst. (2023). 56, 1229-124 |\n' +
-    '|    https://doi.org/10.1107/S1600576723005897        |\n' + '-'*55 +'\n')
+# Version and citation information
+VERSION = "1.0.0"
+CITATION = "J. Appl. Cryst. (2023). 56, 1229-124"
+DOI = "https://doi.org/10.1107/S1600576723005897"
+
+# Program header
+HEADER = f"""
+{"-" * 55}
+|                CrysFieldExplorer {VERSION}              |
+|   A program for fast optimization of CEF Parameters |
+|   -Developed by Kyle Ma                             |
+|   Please cite  {CITATION} |
+|    {DOI}        |
+{"-" * 55}
+"""
+
+print(HEADER)
+
+# The [S, L, J] quantum numbers for rare earth elements
+# Data sourced from PyCrystalField
+RARE_EARTH_IONS: Dict[str, List[float]] = {
+    "Ce3+": [0.5, 3.0, 2.5],
+    "Pr3+": [1.0, 5.0, 4.0],
+    "Nd3+": [1.5, 6.0, 4.5],
+    "Pm3+": [2.0, 6.0, 4.0],
+    "Sm3+": [2.5, 5.0, 2.5],
+    "Eu3+": [3.0, 3.0, 0.0],
+    "Gd3+": [3.5, 0.0, 3.5],
+    "Tb3+": [3.0, 3.0, 6.0],
+    "Dy3+": [2.5, 5.0, 7.5],
+    "Ho3+": [2.0, 6.0, 8.0],
+    "Er3+": [1.5, 6.0, 7.5],
+    "Tm3+": [1.0, 5.0, 6.0],
+    "Yb3+": [0.5, 3.0, 3.5],
+}
 
 
+class QuantumOperator:
+    """
+    Represents the total angular momentum operator for a magnetic ion.
 
-REion= {}   # The [S, L, J] quantum numbers for rare earth elements
-#Rare earth (Thanks to PyCrystalField for summarizing the data)
-REion['Ce3+'] = [0.5, 3., 2.5]
-REion['Pr3+'] = [1., 5., 4.]
-REion['Nd3+'] = [1.5, 6., 4.5]
-REion['Pm3+'] = [2., 6., 4.]
-REion['Sm3+'] = [2.5, 5, 2.5]
-REion['Eu3+'] = [3, 3, 0]
-REion['Gd3+'] = [7/2, 0, 7/2]
-REion['Tb3+'] = [3., 3., 6.]
-REion['Dy3+'] = [2.5, 5., 7.5]
-REion['Ho3+'] = [2., 6., 8.]
-REion['Er3+'] = [1.5, 6., 7.5]
-REion['Tm3+'] = [1., 5., 6.]
-REion['Yb3+'] = [0.5, 3., 3.5]
+    This class implements various quantum mechanical operators related to angular momentum,
+    including raising/lowering operators and the components of the angular momentum vector.
 
-class Quantum_Operator():
-    '''The total angular momentum operator Constructed from Magnetic Ion
-       Input Description:
-       
-       Magnetic_ion[Str]: Magnetic ion. Example: "Er3+"
-     '''
-    
-    def __init__(self, Magnetic_ion):
-        self.S=REion[Magnetic_ion][0]
-        self.L=REion[Magnetic_ion][1]
-        self.J=REion[Magnetic_ion][2]
-        
-    def Jplus(self):
-        Jplus = np.zeros((int(2*self.J+1),int(2*self.J+1)))
-        for i in range(int(2*self.J)):
-            Jplus[i+1,i] = sqrt((self.J-(-self.J+i))*(self.J+(-self.J+i)+1))
-        return Jplus
-       
-    def Jminus(self):
-        Jminus =np.zeros((int(2*self.J+1),int(2*self.J+1)))
-        for i in range(int(2*self.J)):
-            Jminus[i,i+1] = sqrt((self.J+(-(self.J-1)+i))*(self.J-(-(self.J-1)+i)+1))
-        return Jminus   
-       
-    def Jz(self):
-        Jz = np.zeros((int(2*self.J+1),int(2*self.J+1)))
-        for i in range(int(2*self.J+1)):
-         Jz[i,i] = (-self.J+i)
-        return Jz
-       
-    def Jx(self):
-        jx=0.5*(self.Jplus()+self.Jminus())       
-        return jx
-    
-    def Jy(self):
-        jy=(self.Jminus()-self.Jplus())/(2*1j)
-        return jy
-       
-    def Jsquare(self):
-        jsquare=np.dot(self.Jx(),np.transpose(np.conj(self.Jx())))+np.dot(self.Jy(),np.transpose(np.conj(self.Jy())))+np.dot(self.Jz(),np.transpose(np.conj(self.Jz())))
-        return jsquare
-        
-    def Jplussquare(self):
-        jplussquare = self.Jplus()*self.Jplus()
-        return jplussquare
-       
-    def Jminussquare(self):
-        jminussquare = self.Jminus()*self.Jminus()
-        return jminussquare
-    
-    def Matrix(self):
-        quantum_matrix={'jx':self.Jx(),'jy':self.Jy(),'jz':self.Jz(),'jplus':self.Jplus(),'jminus':self.Jminus(),'jsquare':self.Jsquare()} 
-        return quantum_matrix
+    Args:
+        magnetic_ion (str): The magnetic ion symbol (e.g., "Er3+")
 
-class Stevens_Operator(Quantum_Operator):
-    
-    '''Child class of Quantum_Operator.
-    
-       Calculate the Stevens Operator from the quantum operator by inheriting Jx,Jy,Jz,Jplus,Jminus,Jsquare etc from Parent Class.
-       Using hashmap data struct for readability.
-       
-       Input Description:
-          
-       Magnetic_ion[Str]: Magnetic ion. Example: "Er3+"
-    '''
-    
-    def __init__(self,Magnetic_ion):
-        super().__init__(Magnetic_ion)
+    Attributes:
+        S (float): The spin quantum number
+        L (float): The orbital angular momentum quantum number
+        J (float): The total angular momentum quantum number
+    """
 
-    def Stevens(self,n,m):
-       jx=np.matrix(super().Matrix()['jx'])
-       jy=np.matrix(super().Matrix()['jy'])
-       jz=np.matrix(super().Matrix()['jz']) 
-       jplus=np.matrix(super().Matrix()['jplus'])
-       jminus=np.matrix(super().Matrix()['jminus'])
-       jsquare=np.matrix(super().Matrix()['jsquare'])
-       
-       O20 = 3.0*(jz**2) - jsquare
-       O21 = 0.25*(jz*(jplus+jminus)+(jplus+jminus)*jz)
-       O22 = 0.5*(jplus**2 + jminus**2)
-       O40 = 35.0*(jz**4) - 30.0*(jsquare*(jz**2)) + 25.0*(jz**2) -6.0*(jsquare) + 3.0*(jsquare**2)
-       O41 = 0.25*((jplus+jminus)*(7*jz**3-(3*jsquare*jz+jz))+(7*jz**3-(3*jsquare*jz+jz))*(jplus+jminus))
-       O42 = 0.25*((jplus**2 + jminus**2)*(7*jz**2-jsquare) -(jplus**2 + jminus**2)*5+
-                    (7*jz**2-jsquare)*(jplus**2 + jminus**2)-5*(jplus**2 + jminus**2))
-       O43 = 0.25*(jz*(jplus**3+jminus**3)+(jplus**3+jminus**3)*jz)
-       O44 = 0.5*(jplus**4 + jminus**4)
-       O60 = 231*(jz**6) - 315*(jsquare*(jz**4)) + 735*(jz**4) + 105*((jsquare**2)*(jz**2)) - 525*(jsquare*(jz**2)) + 294*(jz**2) - 5*(jsquare**3) + 40*(jsquare**2) - 60*(jsquare)
-       O61 =0.25*((jplus+jminus)*(33*jz**5-(30*jsquare*jz**3-15*jz**3)+(5*jsquare**2*jz-10*jsquare*jz+12*jz))+(33*jz**5-(30*jsquare*jz**3-15*jz**3)+(5*jsquare**2*jz-10*jsquare*jz+12*jz))*(jplus+jminus))
-       O62 = 0.25*((jplus**2 + jminus**2)*(33*jz**4 -(18*jsquare*jz**2+123*jz**2) +jsquare**2 +10*jsquare) +((jplus**2 + jminus**2)*102) +
-                    (33*jz**4 -(18*jsquare*jz**2+123*jz**2) +jsquare**2 +10*jsquare)*(jplus**2 + jminus**2)+102*(jplus**2 + jminus**2))
-       O63 = 0.25*((11*jz**3-3*jsquare*jz-59*jz)*(jplus**3+jminus**3) + (jplus**3+jminus**3)*(11*jz**3 - 3 * jsquare*jz-59*jz))
-       O64 = 0.25*((jplus**4 + jminus**4)*(11*jz**2 -jsquare) -(jplus**4 + jminus**4)*38 + (11*jz**2 -jsquare)*(jplus**4 + jminus**4)-38*(jplus**4 + jminus**4))
-       O65 = 0.25*((jplus**5+jminus**5)*jz+jz*(jplus**5+jminus**5))
-       O66 = 0.5*((jplus**6+jminus**6))
-       O2n2 = (-0.5j)*(jplus**2-jminus**2)
-       O4n2 = (-0.25j)*((jplus**2 - jminus**2)*(7*jz**2-jsquare) -(jplus**2 - jminus**2)*5+
-                    (7*jz**2-jsquare)*(jplus**2 - jminus**2)-5*(jplus**2 - jminus**2))
-       O4n3 = (-0.25j) *((jplus**3 - jminus**3)*jz + jz*(jplus**3 - jminus**3))
-       O4n4 = (-0.5j)*(jplus**4 - jminus**4)
-       O6n2 = (-0.25j)*((jplus**2 - jminus**2)*(33*jz**4 -(18*jsquare*jz**2+123*jz**2) +jsquare**2 +10*jsquare) +((jplus**2 - jminus**2)*102) +
-                    (33*jz**4 -(18*jsquare*jz**2+123*jz**2) +jsquare**2 +10*jsquare)*(jplus**2 - jminus**2)+102*(jplus**2 - jminus**2))
-       O6n3 =  -0.25j*((11*jz**3-3*jsquare*jz-59*jz)*(jplus**3-jminus**3) + (jplus**3-jminus**3)*(11*jz**3 - 3 * jsquare*jz-59*jz))
-       O6n4 = -0.25j*((jplus**4 - jminus**4)*(11*jz**2 -jsquare) -(jplus**4 - jminus**4)*38 + (11*jz**2 -jsquare)*(jplus**4 - jminus**4)-38*(jplus**4 - jminus**4))
-       O6n6 = (-0.5j)*(jplus**6-jminus**6)
-       
-       if   [n,m] == [2,0]:
-           matrix= O20
-       elif [n,m] == [2,1]:
-           matrix= O21
-       elif [n,m] == [2,2]:
-           matrix= O22
-       elif [n,m] == [4,0]:
-           matrix= O40
-       elif [n,m] == [4,1]:
-           matrix= O41
-       elif [n,m] == [4,2]:
-           matrix= O42
-       elif [n,m] == [4,3]:
-           matrix= O43
-       elif [n,m] == [4,4]:
-            matrix= O44
-       elif [n,m] == [6,0]:
-           matrix= O60   
-       elif [n,m] == [6,1]:
-           matrix= O61
-       elif [n,m] == [6,2]:
-           matrix= O62
-       elif [n,m] == [6,3]:
-           matrix= O63
-       elif [n,m] == [6,4]:
-           matrix= O64
-       elif [n,m] == [6,5]:
-           matrix= O65
-       elif [n,m] == [6,6]:
-           matrix= O66
-       elif [n,m] == [2,-2]:
-           matrix= O2n2
-       elif [n,m] == [4,-2]:
-           matrix= O4n2
-       elif [n,m] == [4,-3]:
-           matrix= O4n3
-       elif [n,m] == [4,-4]:
-           matrix= O4n4
-       elif [n,m] == [6,-2]:
-           matrix= O6n2
-       elif [n,m] == [6,-3]:
-           matrix= O6n3
-       elif [n,m] == [6,-4]:
-           matrix= O6n4
-       elif [n,m] == [6,-6]:
-           matrix= O6n6
-       return {f'{n}{m}':matrix}
-   
+    def __init__(self, magnetic_ion: str) -> None:
+        """Initialize the quantum operator for a given magnetic ion."""
+        if magnetic_ion not in RARE_EARTH_IONS:
+            raise ValueError(f"Unknown magnetic ion: {magnetic_ion}")
 
-    def Stevens_hash(self,Stevens_idx):
-        O=dict()
-        for i in Stevens_idx:
-            O.update(self.Stevens(i[0],i[1]))
-        return O
+        self.S = RARE_EARTH_IONS[magnetic_ion][0]
+        self.L = RARE_EARTH_IONS[magnetic_ion][1]
+        self.J = RARE_EARTH_IONS[magnetic_ion][2]
+        self._matrix_size = int(2 * self.J + 1)
 
+    def j_plus(self) -> npt.NDArray:
+        """Calculate the angular momentum raising operator J+.
+
+        Returns:
+            np.ndarray: The matrix representation of J+
+        """
+        j_plus = np.zeros((self._matrix_size, self._matrix_size))
+        for i in range(self._matrix_size - 1):
+            m = -self.J + i
+            j_plus[i + 1, i] = sqrt((self.J - m) * (self.J + m + 1))
+        return j_plus
+
+    def j_minus(self) -> npt.NDArray:
+        """Calculate the angular momentum lowering operator J-.
+
+        Returns:
+            np.ndarray: The matrix representation of J-
+        """
+        j_minus = np.zeros((self._matrix_size, self._matrix_size))
+        for i in range(self._matrix_size - 1):
+            m = -self.J + i
+            j_minus[i, i + 1] = sqrt((self.J + m + 1) * (self.J - m))
+        return j_minus
+
+    def j_z(self) -> npt.NDArray:
+        """Calculate the z-component of angular momentum Jz.
+
+        Returns:
+            np.ndarray: The matrix representation of Jz
+        """
+        j_z = np.zeros((self._matrix_size, self._matrix_size))
+        for i in range(self._matrix_size):
+            j_z[i, i] = -self.J + i
+        return j_z
+
+    def j_x(self) -> npt.NDArray:
+        """Calculate the x-component of angular momentum Jx.
+
+        Returns:
+            np.ndarray: The matrix representation of Jx
+        """
+        return 0.5 * (self.j_plus() + self.j_minus())
+
+    def j_y(self) -> npt.NDArray:
+        """Calculate the y-component of angular momentum Jy.
+
+        Returns:
+            np.ndarray: The matrix representation of Jy
+        """
+        return (self.j_minus() - self.j_plus()) / (2j)
+
+    def j_squared(self) -> npt.NDArray:
+        """Calculate the total angular momentum operator J².
+
+        Returns:
+            np.ndarray: The matrix representation of J²
+        """
+        j_x, j_y, j_z = self.j_x(), self.j_y(), self.j_z()
+        return (
+            np.dot(j_x, np.transpose(np.conj(j_x)))
+            + np.dot(j_y, np.transpose(np.conj(j_y)))
+            + np.dot(j_z, np.transpose(np.conj(j_z)))
+        )
+
+    def j_plus_squared(self) -> npt.NDArray:
+        """Calculate J+².
+
+        Returns:
+            np.ndarray: The matrix representation of J+²
+        """
+        j_plus = self.j_plus()
+        return j_plus @ j_plus
+
+    def j_minus_squared(self) -> npt.NDArray:
+        """Calculate J-².
+
+        Returns:
+            np.ndarray: The matrix representation of J-²
+        """
+        j_minus = self.j_minus()
+        return j_minus @ j_minus
+
+    def get_matrices(self) -> Dict[str, npt.NDArray]:
+        """Get all quantum operator matrices.
+
+        Returns:
+            Dict[str, np.ndarray]: Dictionary containing all operator matrices
+        """
+        return {
+            "jx": self.j_x(),
+            "jy": self.j_y(),
+            "jz": self.j_z(),
+            "jplus": self.j_plus(),
+            "jminus": self.j_minus(),
+            "jsquare": self.j_squared(),
+        }
+
+
+class StevensOperator(QuantumOperator):
+    """
+    Calculates Stevens Operators for crystal field calculations.
+
+    This class extends QuantumOperator to calculate Stevens Operators, which are used
+    in crystal field calculations. The operators are calculated using the quantum
+    mechanical operators inherited from the parent class.
+
+    The Stevens Operators are labeled as O_n^m where:
+    - n is the order (2, 4, or 6)
+    - m is the projection (-n ≤ m ≤ n)
+
+    Args:
+        magnetic_ion (str): The magnetic ion symbol (e.g., "Er3+")
+    """
+
+    def __init__(self, magnetic_ion: str) -> None:
+        """Initialize the Stevens Operator calculator."""
+        super().__init__(magnetic_ion)
+        self._operators_cache = {}
+
+        # Define mapping of (n,m) to calculation methods
+        self._operator_map = {
+            # n = 2 operators
+            (2, 0): lambda jx, jy, jz, jp, jm, js: self._calculate_o20(jz, js),
+            (2, 1): lambda jx, jy, jz, jp, jm, js: self._calculate_o21(jz, jp, jm),
+            (2, 2): lambda jx, jy, jz, jp, jm, js: self._calculate_o22(jp, jm),
+            (2, -2): lambda jx, jy, jz, jp, jm, js: self._calculate_o2n2(jp, jm),
+            # n = 4 operators
+            (4, 0): lambda jx, jy, jz, jp, jm, js: self._calculate_o40(jz, js),
+            (4, 1): lambda jx, jy, jz, jp, jm, js: self._calculate_o41(jz, jp, jm, js),
+            (4, 2): lambda jx, jy, jz, jp, jm, js: self._calculate_o42(jz, jp, jm, js),
+            (4, 3): lambda jx, jy, jz, jp, jm, js: self._calculate_o43(jz, jp, jm),
+            (4, 4): lambda jx, jy, jz, jp, jm, js: self._calculate_o44(jp, jm),
+            (4, -2): lambda jx, jy, jz, jp, jm, js: self._calculate_o4n2(jz, jp, jm, js),
+            (4, -3): lambda jx, jy, jz, jp, jm, js: self._calculate_o4n3(jz, jp, jm),
+            (4, -4): lambda jx, jy, jz, jp, jm, js: self._calculate_o4n4(jp, jm),
+            # n = 6 operators
+            (6, 0): lambda jx, jy, jz, jp, jm, js: self._calculate_o60(jz, js),
+            (6, 1): lambda jx, jy, jz, jp, jm, js: self._calculate_o61(jz, jp, jm, js),
+            (6, 2): lambda jx, jy, jz, jp, jm, js: self._calculate_o62(jz, jp, jm, js),
+            (6, 3): lambda jx, jy, jz, jp, jm, js: self._calculate_o63(jz, jp, jm, js),
+            (6, 4): lambda jx, jy, jz, jp, jm, js: self._calculate_o64(jz, jp, jm, js),
+            (6, 5): lambda jx, jy, jz, jp, jm, js: self._calculate_o65(jz, jp, jm),
+            (6, 6): lambda jx, jy, jz, jp, jm, js: self._calculate_o66(jp, jm),
+            (6, -2): lambda jx, jy, jz, jp, jm, js: self._calculate_o6n2(jz, jp, jm, js),
+            (6, -3): lambda jx, jy, jz, jp, jm, js: self._calculate_o6n3(jz, jp, jm, js),
+            (6, -4): lambda jx, jy, jz, jp, jm, js: self._calculate_o6n4(jz, jp, jm, js),
+            (6, -6): lambda jx, jy, jz, jp, jm, js: self._calculate_o6n6(jp, jm),
+        }
+
+    def _calculate_o20(self, jz: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_2^0 operator."""
+        return 3.0 * (jz**2) - jsquare
+
+    def _calculate_o21(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_2^1 operator."""
+        sum_ops = jplus + jminus
+        return 0.25 * (jz @ sum_ops + sum_ops @ jz)
+
+    def _calculate_o22(self, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_2^2 operator."""
+        return 0.5 * (jplus**2 + jminus**2)
+
+    def _calculate_o2n2(self, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_2^-2 operator."""
+        return (-0.5j) * (jplus**2 - jminus**2)
+
+    def _calculate_o40(self, jz: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_4^0 operator."""
+        return 35.0 * (jz**4) - 30.0 * (jsquare @ jz**2) + 25.0 * (jz**2) - 6.0 * jsquare + 3.0 * (jsquare**2)
+
+    def _calculate_o41(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_4^1 operator."""
+        sum_ops = jplus + jminus
+        term = 7 * jz**3 - (3 * jsquare @ jz + jz)
+        return 0.25 * (sum_ops @ term + term @ sum_ops)
+
+    def _calculate_o42(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_4^2 operator."""
+        sum_squared = jplus**2 + jminus**2
+        term = 7 * jz**2 - jsquare
+        return 0.25 * (sum_squared @ term - 5 * sum_squared + term @ sum_squared - 5 * sum_squared)
+
+    def _calculate_o43(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_4^3 operator."""
+        sum_cubed = jplus**3 + jminus**3
+        return 0.25 * (jz @ sum_cubed + sum_cubed @ jz)
+
+    def _calculate_o44(self, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_4^4 operator."""
+        return 0.5 * (jplus**4 + jminus**4)
+
+    def _calculate_o4n2(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_4^-2 operator."""
+        diff_squared = jplus**2 - jminus**2
+        term = 7 * jz**2 - jsquare
+        return (-0.25j) * (diff_squared @ term - 5 * diff_squared + term @ diff_squared - 5 * diff_squared)
+
+    def _calculate_o4n3(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_4^-3 operator."""
+        diff_cubed = jplus**3 - jminus**3
+        return (-0.25j) * (diff_cubed @ jz + jz @ diff_cubed)
+
+    def _calculate_o4n4(self, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_4^-4 operator."""
+        return (-0.5j) * (jplus**4 - jminus**4)
+
+    def _calculate_o60(self, jz: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^0 operator."""
+        return (
+            231 * (jz**6)
+            - 315 * (jsquare @ jz**4)
+            + 735 * (jz**4)
+            + 105 * (jsquare**2 @ jz**2)
+            - 525 * (jsquare @ jz**2)
+            + 294 * (jz**2)
+            - 5 * (jsquare**3)
+            + 40 * (jsquare**2)
+            - 60 * jsquare
+        )
+
+    def _calculate_o61(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^1 operator."""
+        sum_ops = jplus + jminus
+        term = 33 * jz**5 - (30 * jsquare @ jz**3 - 15 * jz**3) + (5 * jsquare**2 @ jz - 10 * jsquare @ jz + 12 * jz)
+        return 0.25 * (sum_ops @ term + term @ sum_ops)
+
+    def _calculate_o62(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^2 operator."""
+        sum_squared = jplus**2 + jminus**2
+        term = 33 * jz**4 - (18 * jsquare @ jz**2 + 123 * jz**2) + jsquare**2 + 10 * jsquare
+        return 0.25 * (sum_squared @ term + 102 * sum_squared + term @ sum_squared + 102 * sum_squared)
+
+    def _calculate_o63(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^3 operator."""
+        sum_cubed = jplus**3 + jminus**3
+        term = 11 * jz**3 - 3 * jsquare @ jz - 59 * jz
+        return 0.25 * (term @ sum_cubed + sum_cubed @ term)
+
+    def _calculate_o64(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^4 operator."""
+        sum_fourth = jplus**4 + jminus**4
+        term = 11 * jz**2 - jsquare
+        return 0.25 * (sum_fourth @ term - 38 * sum_fourth + term @ sum_fourth - 38 * sum_fourth)
+
+    def _calculate_o65(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_6^5 operator."""
+        sum_fifth = jplus**5 + jminus**5
+        return 0.25 * (sum_fifth @ jz + jz @ sum_fifth)
+
+    def _calculate_o66(self, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_6^6 operator."""
+        return 0.5 * (jplus**6 + jminus**6)
+
+    def _calculate_o6n2(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^-2 operator."""
+        diff_squared = jplus**2 - jminus**2
+        term = 33 * jz**4 - (18 * jsquare @ jz**2 + 123 * jz**2) + jsquare**2 + 10 * jsquare
+        return (-0.25j) * (diff_squared @ term + 102 * diff_squared + term @ diff_squared + 102 * diff_squared)
+
+    def _calculate_o6n3(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^-3 operator."""
+        diff_cubed = jplus**3 - jminus**3
+        term = 11 * jz**3 - 3 * jsquare @ jz - 59 * jz
+        return (-0.25j) * (term @ diff_cubed + diff_cubed @ term)
+
+    def _calculate_o6n4(self, jz: np.ndarray, jplus: np.ndarray, jminus: np.ndarray, jsquare: np.ndarray) -> np.ndarray:
+        """Calculate O_6^-4 operator."""
+        diff_fourth = jplus**4 - jminus**4
+        term = 11 * jz**2 - jsquare
+        return (-0.25j) * (diff_fourth @ term - 38 * diff_fourth + term @ diff_fourth - 38 * diff_fourth)
+
+    def _calculate_o6n6(self, jplus: np.ndarray, jminus: np.ndarray) -> np.ndarray:
+        """Calculate O_6^-6 operator."""
+        return (-0.5j) * (jplus**6 - jminus**6)
+
+    def get_operator(self, n: int, m: int) -> np.ndarray:
+        """
+        Get the Stevens Operator O_n^m.
+
+        Args:
+            n (int): Order of the operator (2, 4, or 6)
+            m (int): Projection (-n ≤ m ≤ n)
+
+        Returns:
+            np.ndarray: Matrix representation of the Stevens Operator
+
+        Raises:
+            ValueError: If n,m combination is invalid
+            NotImplementedError: If the requested operator is not implemented
+        """
+        if not (n in [2, 4, 6] and -n <= m <= n):
+            raise ValueError(f"Invalid Stevens Operator indices: n={n}, m={m}")
+
+        # Check cache first
+        cache_key = f"{n}{m}"
+        if cache_key in self._operators_cache:
+            return self._operators_cache[cache_key]
+
+        # Get base operators
+        matrices = super().get_matrices()
+        jx = np.matrix(matrices["jx"])
+        jy = np.matrix(matrices["jy"])
+        jz = np.matrix(matrices["jz"])
+        jplus = np.matrix(matrices["jplus"])
+        jminus = np.matrix(matrices["jminus"])
+        jsquare = np.matrix(matrices["jsquare"])
+
+        # Get the calculation function from the map
+        calc_func = self._operator_map.get((n, m))
+        if calc_func is None:
+            raise NotImplementedError(f"Stevens Operator O_{n}^{m} not yet implemented")
+
+        # Calculate the operator
+        matrix = calc_func(jx, jy, jz, jplus, jminus, jsquare)
+
+        # Cache the result
+        self._operators_cache[cache_key] = matrix
+        return matrix
+
+    def get_all_operators(self) -> Dict[str, np.ndarray]:
+        """
+        Calculate all implemented Stevens Operators.
+
+        Returns:
+            Dict[str, np.ndarray]: Dictionary mapping operator labels to matrices
+        """
+        operators = {}
+        for n in [2, 4, 6]:
+            for m in range(-n, n + 1):
+                try:
+                    operators[f"O_{n}^{m}"] = self.get_operator(n, m)
+                except NotImplementedError:
+                    continue
+        return operators

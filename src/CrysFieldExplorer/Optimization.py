@@ -4,310 +4,315 @@ Created on Sat Nov  4 02:50:17 2023
 
 @author: qmc
 """
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import pandas as pd
-from alive_progress import alive_bar
-from time import sleep
-import sympy as sym
-from sympy import symbols, solve,cos,sin,Matrix, Inverse
-from scipy import optimize
-from scipy.special import wofz
-from scipy import integrate
-import scipy.linalg as LA
-from mpi4py import MPI
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib.ticker import ScalarFormatter
-import CrysFieldExplorer.Operators as op
-import CrysFieldExplorer.CrysFieldExplorer as crs
+
+from typing import Dict, List, Tuple, Union
+
 import cma
+import numpy as np
+from mpi4py import MPI
 
-class Optimization(crs.CrysFieldExplorer):
-    def __init__(self, Magnetic_ion, Stevens_idx, alpha, beta, gamma, Parameter, temperature, field, true_eigenvalue, true_intensity):
-        self.Stevens_idx=Stevens_idx
-        self.alpha=alpha
-        self.beta=beta
-        self.gamma=gamma
-        self.Parameter=Parameter
-        self.T=temperature
-        self.field=field
-        self.true_eigenvalue=true_eigenvalue
-        self.true_intensity=true_intensity
-        # self.true_X=true_X
-        super().__init__(Magnetic_ion, Stevens_idx, alpha, beta, gamma, Parameter, temperature, field)
+import CrysFieldExplorer.CrysFieldExplorer as crs
 
-        
+ArrayLike = Union[np.ndarray, List[float]]
+
+
+class CrystalFieldOptimizer(crs.CrysFieldExplorer):
+    """Crystal Field Optimization class using CMA-ES algorithm.
+
+    This class extends CrysFieldExplorer to provide optimization capabilities
+    for crystal field parameters using experimental data.
+    """
+
+    def __init__(
+        self,
+        magnetic_ion: str,
+        stevens_idx: List[List[int]],
+        alpha: float,
+        beta: float,
+        gamma: float,
+        parameters: Union[Dict[str, float], ArrayLike],
+        temperature: float,
+        field: float,
+        true_eigenvalue: ArrayLike,
+        true_intensity: ArrayLike,
+    ) -> None:
+        """Initialize the Crystal Field Optimizer.
+
+        Args:
+            magnetic_ion: Name of the magnetic ion
+            stevens_idx: Stevens operator indices
+            alpha: Stevens alpha parameter
+            beta: Stevens beta parameter
+            gamma: Stevens gamma parameter
+            parameters: Crystal field parameters
+            temperature: Temperature in Kelvin
+            field: Applied magnetic field
+            true_eigenvalue: Experimental energy levels
+            true_intensity: Experimental intensities
+        """
+        self.stevens_idx = stevens_idx
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.parameters = parameters
+        self.temperature = temperature
+        self.field = field
+        self.true_eigenvalue = np.array(true_eigenvalue)
+        self.true_intensity = np.array(true_intensity)
+
+        super().__init__(magnetic_ion, stevens_idx, alpha, beta, gamma, parameters, temperature, field)
+
     def test(self):
-        print(self.Parameter)
-         
-    
-    def cma_loss_single(self):
-        # global true_eigenvalue1, true_intensity1, bound, print_flag, true_T, true_X
-        
-        #calculate Hamiltonian and ev, ef, H
-        sol = super().Hamiltonian()
-        
-        Jx   =super().Jx()
-        Jy   =super().Jy()
-        Jz   =super().Jz
-        dim  =len(Jx)
-        J    =self.J
-        
-        eigenvalues  = sol[0]
-        Eigenvectors = sol[1]
-        HMatrix      = sol[2]
-        
-        #take in experimentally observed energy levels
-        true_eigenvalue=self.true_eigenvalue
-        true_intensity=self.true_intensity
-        
-        calint=super().Neutron_Intensity(2,0,True)
-        Intensity=np.zeros(len(calint))
-        j=0
-        for i in calint:
-            Intensity[j]=calint[i].real
-            j+=1
-        Intensity=Intensity[1:len(calint)] # excluding E=0 ground state intensity
-        # ----------------------------------------------------------------
-        loss1=0
-        for i in range(len(true_eigenvalue)):
-            loss1+=(np.linalg.det((true_eigenvalue[i] + eigenvalues[0]) * np.eye(int(2*J+1)) - HMatrix))**2  
-        loss1 = np.log10(np.absolute(loss1)) 
-        
-        # loss2=0.0
-        # loss2 = np.sqrt(np.sum((true_intensity - Intensity)**2))/ np.sqrt(np.sum((true_intensity)**2))
-        
-        # print((np.linalg.det((true_eigenvalue[0] + eigenvalues[0]) * np.eye(int(2*J+1)) - HMatrix))**2  )
+        print(self.parameters)
 
-        # loss3 = np.sqrt(np.sum((true_intensity25 - intensity25)**2))/ np.sqrt(np.sum((true_intensity25)**2))
-        
-        # T, X = calc_x(Eigenvectors1,Jx1, Jy1, Jz1, (sol1[1]-sol1[1][0])/0.086173303)
-        # lossX = np.sqrt(np.mean(((1./X - 1./true_X))**2.0))/np.sqrt(np.mean(((1./true_X))**2.0))
-        
-        # t=100.0
-        # k=100.0
-        # X=100
-        # loss = np.maximum(-20,loss1)+np.maximum(0.001,loss2*t) +loss3*k# + X*lossX
-        loss=loss1
-        # print(loss1)
-        total_loss = loss
-        
-        return total_loss
-    
-    def cma_loss_single_fast(self):
-        # global true_eigenvalue1, true_intensity1, bound, print_flag, true_T, true_X
-        
-        #calculate Hamiltonian and ev, ef, H
-        sol = super().Hamiltonian()
-        
-        Jx   =super().Jx()
-        Jy   =super().Jy()
-        Jz   =super().Jz
-        dim  =len(Jx)
-        J    =self.J
-        
-        eigenvalues  = sol[0]
-        Eigenvectors = sol[1]
-        HMatrix      = sol[2]
-        
-        #take in experimentally observed energy levels
-        true_eigenvalue=self.true_eigenvalue
-        true_intensity=self.true_intensity
-        
-        calint=super().Neutron_Intensity_fast(1,0)
-        Intensity=calint[1:len(true_intensity)+1]
-        # print(Intensity)
-        # print(true_intensity)
-        # ----------------------------------------------------------------
-        loss1=0
-        for i in range(len(true_eigenvalue)):
-            loss1+=(np.linalg.det((true_eigenvalue[i] + eigenvalues[0]) * np.eye(int(2*J+1)) - HMatrix))**2  
-        loss1 = np.log10(np.absolute(loss1)) 
-        
-        loss2=0.0
-        loss2 = np.sqrt(np.sum((true_intensity - Intensity)**2))/ np.sqrt(np.sum((true_intensity)**2))
-        
-        # print((np.linalg.det((true_eigenvalue[0] + eigenvalues[0]) * np.eye(int(2*J+1)) - HMatrix))**2  )
+    def _calculate_eigenvalue_loss(self, hamiltonian: np.ndarray, eigenvalues: np.ndarray) -> float:
+        """Calculate the loss based on eigenvalue differences.
 
-        # loss3 = np.sqrt(np.sum((true_intensity25 - intensity25)**2))/ np.sqrt(np.sum((true_intensity25)**2))
-        
-        # T, X = calc_x(Eigenvectors1,Jx1, Jy1, Jz1, (sol1[1]-sol1[1][0])/0.086173303)
-        # lossX = np.sqrt(np.mean(((1./X - 1./true_X))**2.0))/np.sqrt(np.mean(((1./true_X))**2.0))
-        
-        # t=100.0
-        # k=100.0
-        # X=100
-        # loss = np.maximum(-20,loss1)+np.maximum(0.001,loss2*t) +loss3*k# + X*lossX
-        loss=loss1+10*loss2
-        # print(loss1,loss2)
-        total_loss = loss
-        
-        return total_loss
-    
-    def cma_loss_single_fast_mag(self):
-        # global true_eigenvalue1, true_intensity1, bound, print_flag, true_T, true_X
-        
-        #calculate Hamiltonian and ev, ef, H
-        sol = super().magsolver()
-        
-        Jx   =super().Jx()
-        Jy   =super().Jy()
-        Jz   =super().Jz
-        dim  =len(Jx)
-        J    =self.J
-        
-        eigenvalues  = sol[0]
-        Eigenvectors = sol[1]
-        HMatrix      = sol[2]
-        
-        #take in experimentally observed energy levels
-        true_eigenvalue=self.true_eigenvalue
-        true_intensity=self.true_intensity
-        
-        # calint=super().Neutron_Intensity_fast(1,0)
-        # Intensity=calint[1:len(true_intensity)+1]
-        # print(Intensity)
-        # print(true_intensity)
-        # ----------------------------------------------------------------
-        loss1=0
-        for i in range(len(true_eigenvalue)):
-            loss1+=(np.linalg.det((true_eigenvalue[i] + eigenvalues[0]) * np.eye(int(2*J+1)) - HMatrix))**2  
-        loss1 = np.log10(np.absolute(loss1)) 
-        
-        # loss2=0.0
-        # loss2 = np.sqrt(np.sum((true_intensity - Intensity)**2))/ np.sqrt(np.sum((true_intensity)**2))
-        
-        # print((np.linalg.det((true_eigenvalue[0] + eigenvalues[0]) * np.eye(int(2*J+1)) - HMatrix))**2  )
+        Args:
+            hamiltonian: The Hamiltonian matrix
+            eigenvalues: Calculated eigenvalues
 
-        # loss3 = np.sqrt(np.sum((true_intensity25 - intensity25)**2))/ np.sqrt(np.sum((true_intensity25)**2))
-        
-        # T, X = calc_x(Eigenvectors1,Jx1, Jy1, Jz1, (sol1[1]-sol1[1][0])/0.086173303)
-        # lossX = np.sqrt(np.mean(((1./X - 1./true_X))**2.0))/np.sqrt(np.mean(((1./true_X))**2.0))
-        
-        # t=100.0
-        # k=100.0
-        # X=100
-        # loss = np.maximum(-20,loss1)+np.maximum(0.001,loss2*t) +loss3*k# + X*lossX
-        loss=loss1
-        # print(loss1, loss2)
-        total_loss = loss
-        
-        return total_loss
-    
-#%%
-if __name__=="__main__":
-    alpha=0.01*10.0*4/(45*35)
-    beta=0.01*100.0*2/(11*15*273)
-    gamma=0.01*10.0*8/(13**2*11**2*3**3*7)
-    Stevens_idx=[[2,0],[2,1],[2,2],[4,0],[4,1],[4,2],[4,3],[4,4],[6,0],[6,1],[6,2],[6,3],[6,4],[6,5],[6,6]]
-    test=pd.read_csv(f'C:/Users/qmc/OneDrive/ONRL/Data/CEF/Python/Eradam/Eradam_MPI_Newfit_goodsolution.csv',header=None)
-    Parameter=dict()
-    temp=5
-    field=0
-    
-    Para=np.zeros(15)
-    for i in range(15):
-        Para[i]=test[i][0]
-        
-    Para[2]=10*Para[2] #22 -2
-    Para[4]=0.1*Para[4] #41 - 4
-    Para[6]=10*Para[6]  #43 -6
-    Para[9]=0.1*Para[9] #61 -9
-    Para[11]=10*Para[11] #63 -11
-    Para[13]=10*Para[13] #65 -13
-    Para[14]=10*Para[14] #66 -14
-    
-    true_eigenvalue = np.array([1.77, 5.25, 7.17,  13.72, 22.58, 27.81, 49.24]) #type in experiment measured values
-    true_intensity  = np.array([   1.00,0.365,0.000,0.167,0.074,0.027,0.010])
-    # true_X=np.array([0.059169, 0.054744, 0.050943, 0.047583, 0.044683, 0.041926, 0.039777])
-    obj=Optimization('Er3+', Stevens_idx, alpha, beta, gamma, Para, temp, field,true_eigenvalue,true_intensity)
-    # ev,_,_=obj.Hamiltonian()
-    # obj.test(Parameter)
-    # print(np.round(ev-ev[0],3))
+        Returns:
+            float: Log of the absolute determinant difference
+        """
+        loss = 0.0
+        eye_matrix = np.eye(int(2 * self.J + 1))
 
-    def opt(Para):
-        '''The optimization requires defining a function to have Parameter(Para) as sole input'''
-        return Optimization('Er3+', Stevens_idx, alpha, beta, gamma, Para, temp, field,true_eigenvalue,true_intensity).cma_loss_single()
+        for true_val in self.true_eigenvalue:
+            det = np.linalg.det((true_val + eigenvalues[0]) * eye_matrix - hamiltonian)
+            loss += det * det
 
-#%%##############################################
-# 	  The main algorithm with parallel capability
-#     To parallel this on multi-core cpu:
-#        1. Open a python console such as Anaconda Prompt
-#        2. Use cd "Path" to navigate to the code folder
-#        3. Type mpiexec -n numprocs python -m mpi4py pyfile
-#################################################
+        return np.log10(np.abs(loss))
 
+    def _calculate_intensity_loss(self, intensity: np.ndarray) -> float:
+        """Calculate the normalized intensity loss.
+
+        Args:
+            intensity: Calculated intensity values
+
+        Returns:
+            float: Normalized root mean square error
+        """
+        diff_squared = np.sum((self.true_intensity - intensity) ** 2)
+        norm = np.sum(self.true_intensity**2)
+        return np.sqrt(diff_squared / norm)
+
+    def cma_loss_single(self) -> float:
+        """Calculate the loss function for CMA optimization.
+
+        Returns:
+            float: Total loss value
+        """
+        # Calculate Hamiltonian and eigenvalues
+        eigenvalues, eigenvectors, hamiltonian = self.Hamiltonian()
+
+        # Calculate losses
+        ev_loss = self._calculate_eigenvalue_loss(hamiltonian, eigenvalues)
+
+        return ev_loss
+
+    def cma_loss_single_fast(self) -> float:
+        """Calculate a faster version of the loss function including intensity.
+
+        Returns:
+            float: Combined loss value from eigenvalues and intensities
+        """
+        # Calculate Hamiltonian and eigenvalues
+        eigenvalues, eigenvectors, hamiltonian = self.Hamiltonian()
+
+        # Calculate neutron scattering intensities more efficiently
+        intensities = self.Neutron_Intensity_fast(1, 0)
+        intensity_array = intensities[1 : len(self.true_intensity) + 1]
+
+        # Calculate both losses
+        ev_loss = self._calculate_eigenvalue_loss(hamiltonian, eigenvalues)
+        int_loss = self._calculate_intensity_loss(intensity_array)
+
+        return ev_loss + 10 * int_loss
+
+    def cma_loss_single_fast_mag(self) -> float:
+        """Calculate loss function optimized for magnetic calculations.
+
+        Returns:
+            float: Loss value based on magnetic properties
+        """
+        eigenvalues, eigenvectors, hamiltonian = self.magsolver()
+        return self._calculate_eigenvalue_loss(hamiltonian, eigenvalues)
+
+
+def setup_optimization_bounds(n_parameters: int, scale: float = 100.0) -> Tuple[np.ndarray, np.ndarray]:
+    """Set up the optimization bounds for CMA-ES.
+
+    Args:
+        n_parameters: Number of parameters to optimize
+        scale: Scale factor for the bounds
+
+    Returns:
+        Tuple containing lower and upper bounds
+    """
+    lower_bound = -np.ones(n_parameters) * scale
+    upper_bound = np.ones(n_parameters) * scale
+    return lower_bound, upper_bound
+
+
+def run_cma_optimization(
+    optimizer: CrystalFieldOptimizer,
+    x_init: np.ndarray,
+    bounds: Tuple[np.ndarray, np.ndarray],
+    sigma: float = 1e-7,
+    max_fevals: int = 10000000,
+) -> Tuple[np.ndarray, float]:
+    """Run CMA-ES optimization.
+
+    Args:
+        optimizer: Instance of CrystalFieldOptimizer
+        x_init: Initial parameter values
+        bounds: Tuple of (lower_bounds, upper_bounds)
+        sigma: Initial step size
+        max_fevals: Maximum number of function evaluations
+
+    Returns:
+        Tuple of (optimized_parameters, final_loss)
+    """
+    options = {
+        "maxfevals": max_fevals,
+        "tolfacupx": 1e9,
+        "bounds": bounds,
+    }
+
+    result = cma.fmin(
+        optimizer.cma_loss_single_fast,
+        x_init,
+        sigma,
+        options=options,
+        restarts=1,
+        restart_from_best=True,
+        incpopsize=1,
+        eval_initial_x=True,
+        bipop=True,
+    )
+
+    return result[0], result[1]
+
+
+def run_parallel_optimization(
+    magnetic_ion: str,
+    stevens_idx: List[List[int]],
+    alpha: float,
+    beta: float,
+    gamma: float,
+    temperature: float,
+    field: float,
+    true_eigenvalue: ArrayLike,
+    true_intensity: ArrayLike,
+    n_tries: int = 1,
+    output_file: str = "optimization_results.csv",
+) -> None:
+    """Run parallel optimization using MPI.
+
+    Args:
+        magnetic_ion: Name of the magnetic ion
+        stevens_idx: Stevens operator indices
+        alpha: Stevens alpha parameter
+        beta: Stevens beta parameter
+        gamma: Stevens gamma parameter
+        temperature: Temperature in Kelvin
+        field: Applied magnetic field
+        true_eigenvalue: Experimental energy levels
+        true_intensity: Experimental intensities
+        n_tries: Number of optimization attempts
+        output_file: Path to save results
+    """
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     size = comm.Get_size()
-    
-    #--------------------------------------
-    # Process the spectrum data
-    
-    par_dim = 15
-    bound = np.zeros((2,par_dim))
-    
-    bound[:,0]  = [-1, 1]
-    bound[:,1]  = [-1, 1]
-    bound[:,2]  = [-1, 1]
-    bound[:,3]  = [-1, 1]
-    bound[:,4]  = [-1, 1]
-    bound[:,5]  = [-1, 1]
-    bound[:,6]  = [-1, 1]
-    bound[:,7]  = [-1, 1]
-    bound[:,8]  = [-1, 1]
-    bound[:,9]  = [-1, 1]
-    bound[:,10]  = [-1, 1]
-    bound[:,11]  = [-1, 1]
-    bound[:,12]  = [-1, 1]
-    bound[:,13]  = [-1, 1]
-    bound[:,14]  = [-1, 1]
-    bound = bound * 100.0
-    
-    ntry = 1
-    
-    final_result = np.zeros((ntry, par_dim+2))
-    comm.Barrier()
-    
-    for iter_num  in range(ntry):
 
-        print_flag = False
-        #-----------------------------------------------------------------------------
-        #                    First-round optimization using PSO
-        #-----------------------------------------------------------------------------    
-        x_init = np.random.rand(par_dim) * 2.0 - 1.0
-        x_init = x_init * (bound[1,:]-bound[0,:])*0.5 + (bound[1,:]+bound[0,:])*0.5
-    
-    
-        max_bound = np.ones(par_dim)
-        min_bound = - max_bound
-        bnds = (min_bound, max_bound)
-        bnds = (bound[0,:], bound[1,:])
-        res = cma.fmin(opt, x_init, 1e-7, options={'maxfevals': 10000000, 'tolfacupx': 1e9}, args=(), gradf=None, \
-    		    restarts=1, restart_from_best=True, incpopsize=1, eval_initial_x=True, \
-    		     parallel_objective=None, noise_handler=None, noise_change_sigma_exponent=1, \
-    		     noise_kappa_exponent=0, bipop=True, callback=None)
-            
-        print('======================')
-        print(res[0])
-        print(res[1])
-    
-        final_result[iter_num, 0:par_dim] = res[0]
-        final_result[iter_num, par_dim+0] = res[1] # total loss
-    
-    comm.Barrier()
-    
+    n_parameters = len(stevens_idx)
+    lower_bound, upper_bound = setup_optimization_bounds(n_parameters)
+
+    results = np.zeros((n_tries, n_parameters + 2))
+
+    for i in range(n_tries):
+        # Generate random initial parameters
+        x_init = np.random.uniform(low=lower_bound, high=upper_bound, size=n_parameters)
+
+        # Create optimizer instance
+        optimizer = CrystalFieldOptimizer(
+            magnetic_ion=magnetic_ion,
+            stevens_idx=stevens_idx,
+            alpha=alpha,
+            beta=beta,
+            gamma=gamma,
+            parameters=x_init,
+            temperature=temperature,
+            field=field,
+            true_eigenvalue=true_eigenvalue,
+            true_intensity=true_intensity,
+        )
+
+        # Run optimization
+        opt_params, opt_loss = run_cma_optimization(
+            optimizer=optimizer,
+            x_init=x_init,
+            bounds=(lower_bound, upper_bound),
+        )
+
+        results[i, :n_parameters] = opt_params
+        results[i, n_parameters] = opt_loss
+        results[i, n_parameters + 1] = rank
+
+    # Gather results from all processes
     if rank == 0:
-        result=final_result
+        all_results = results
         for source in range(1, size):
-            message=comm.recv(source=source)
-            result=np.append(result,message,axis=0)
-            np.savetxt('Eradam_MPI_Newfit_09252023'+'.csv', result,fmt='%2.20e', delimiter=', ')
+            received = comm.recv(source=source)
+            all_results = np.vstack((all_results, received))
+        np.savetxt(output_file, all_results, fmt="%2.20e", delimiter=",")
     else:
-        comm.send(final_result, dest=0)
+        comm.send(results, dest=0)
+
     comm.Barrier()
-    
-    exit()
-    
-    
+
+
+if __name__ == "__main__":
+    # Example usage
+    stevens_idx = [
+        [2, 0],
+        [2, 1],
+        [2, 2],
+        [4, 0],
+        [4, 1],
+        [4, 2],
+        [4, 3],
+        [4, 4],
+        [6, 0],
+        [6, 1],
+        [6, 2],
+        [6, 3],
+        [6, 4],
+        [6, 5],
+        [6, 6],
+    ]
+
+    # Stevens parameters
+    alpha = 0.01 * 10.0 * 4 / (45 * 35)
+    beta = 0.01 * 100.0 * 2 / (11 * 15 * 273)
+    gamma = 0.01 * 10.0 * 8 / (13**2 * 11**2 * 3**3 * 7)
+
+    # Experimental data
+    true_eigenvalue = np.array([1.77, 5.25, 7.17, 13.72, 22.58, 27.81, 49.24])
+    true_intensity = np.array([1.00, 0.365, 0.000, 0.167, 0.074, 0.027, 0.010])
+
+    run_parallel_optimization(
+        magnetic_ion="Er3+",
+        stevens_idx=stevens_idx,
+        alpha=alpha,
+        beta=beta,
+        gamma=gamma,
+        temperature=5,
+        field=0,
+        true_eigenvalue=true_eigenvalue,
+        true_intensity=true_intensity,
+        n_tries=1,
+        output_file="Er_optimization_results.csv",
+    )
