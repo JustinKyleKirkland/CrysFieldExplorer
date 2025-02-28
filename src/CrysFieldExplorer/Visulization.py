@@ -38,6 +38,10 @@ class Visualizer:
             susceptibility_data: Tuple of (temperature, susceptibility) arrays
         """
         temp, sus = susceptibility_data
+        # Convert lists to numpy arrays if necessary
+        temp = np.array(temp) if isinstance(temp, list) else temp
+        sus = np.array(sus) if isinstance(sus, list) else sus
+
         plt.figure()
         plt.plot(temp, 1 / sus, ".", markersize=self.marker_size)
         plt.xlabel("Temperature (K)", fontsize=self.font_size)
@@ -54,6 +58,10 @@ class Visualizer:
             magnetization_data: Tuple of (field, magnetization) arrays
         """
         field, mag = magnetization_data
+        # Convert lists to numpy arrays if necessary
+        field = np.array(field) if isinstance(field, list) else field
+        mag = np.array(mag) if isinstance(mag, list) else mag
+
         plt.figure()
         plt.plot(field, mag, ".", markersize=self.marker_size)
         plt.xlabel("Field (T)", fontsize=self.font_size)
@@ -71,6 +79,10 @@ class Visualizer:
             intensities: Array of intensity values
             resolution: Resolution/width parameter for Lorentzian broadening
         """
+        # Convert lists to numpy arrays if necessary
+        energies = np.array(energies) if isinstance(energies, list) else energies
+        intensities = np.array(intensities) if isinstance(intensities, list) else intensities
+
         if len(energies) != len(intensities):
             raise ValueError("Energies and intensities must have the same length")
 
