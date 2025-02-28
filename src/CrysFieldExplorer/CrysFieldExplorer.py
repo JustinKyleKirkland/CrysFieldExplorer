@@ -15,6 +15,7 @@ from sympy import Matrix, cos, sin, solve, symbols
 
 import CrysFieldExplorer.Operators as op
 import CrysFieldExplorer.Visulization as vis
+from CrysFieldExplorer.utilities import Utilities
 
 # Physical constants in SI units
 KB_MEV_K = 8.61733e-2  # Boltzmann constant in meV/K
@@ -25,10 +26,10 @@ MU_B_TESLA = 5.7883818012e-2  # Bohr magneton in Tesla
 ArrayLike = Union[np.ndarray, List[float]]
 
 
-class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
+class CrysFieldExplorer(op.StevensOperator, op.QuantumOperator):
     """Crystal Field Explorer class for calculating crystal field properties.
 
-    This class inherits from Stevens_Operator and Quantum_Operator to provide
+    This class inherits from StevensOperator and QuantumOperator to provide
     access to all quantum operators needed for crystal field calculations.
 
     Attributes:
@@ -62,6 +63,10 @@ class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
         temperature: float,
         field: List[float],
     ) -> None:
+        # Call parent class constructor first
+        super().__init__(magnetic_ion)
+
+        # Store attributes
         self.stevens_idx = stevens_idx
         self.alpha = alpha
         self.beta = beta
@@ -69,7 +74,6 @@ class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
         self.parameters = parameters if isinstance(parameters, dict) else {i: p for i, p in enumerate(parameters)}
         self.temperature = temperature
         self.field = field
-        super().__init__(magnetic_ion)
 
     def Hamiltonian(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Calculate the crystal field Hamiltonian and its eigenvalues/vectors.
@@ -83,20 +87,17 @@ class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
             - eigenvectors: Corresponding eigenvectors
             - hamiltonian: The Hamiltonian matrix
         """
-        operators = super().Stevens_hash(self.stevens_idx)
-        hamiltonian = np.zeros_like(operators[list(operators.keys())[0]], dtype=complex)
+        # Get all Stevens operators for the given indices
+        operators = {f"O_{n}^{m}": self.get_operator(n, m) for n, m in self.stevens_idx}
 
-        # Map order to coefficient for faster lookup
-        coeff_map = {"2": self.alpha, "4": self.beta, "6": self.gamma}
+        # Construct Hamiltonian
+        hamiltonian = np.zeros((self._matrix_size, self._matrix_size), dtype=complex)
+        for (n, m), param in zip(self.stevens_idx, self.parameters.values()):
+            hamiltonian += param * operators[f"O_{n}^{m}"]
 
-        for j, (key, operator) in enumerate(operators.items()):
-            order = key[0]  # First character is the order (2,4,6)
-            hamiltonian += coeff_map[order] * self.parameters[j] * operator
-
+        # Solve eigenvalue problem
         eigenvalues, eigenvectors = linalg.eigh(hamiltonian)
-        sort_idx = np.argsort(eigenvalues)
-
-        return eigenvalues[sort_idx], eigenvectors[:, sort_idx], hamiltonian
+        return eigenvalues, eigenvectors, hamiltonian
 
     @classmethod
     def Hamiltonian_scale(
@@ -171,12 +172,12 @@ class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
             The magnetic field Hamiltonian matrix
         """
         # Get angular momentum operators
-        jx, jy, jz = super().Jx(), super().Jy(), super().Jz()
+        jx, jy, jz = self.j_x(), self.j_y(), self.j_z()
 
-        # Calculate Landé g-factor
+        # Calculate Lande g-factor
         g_factor = self.calculate_lande_g_factor()
 
-        # Construct magnetic Hamiltonian
+        # Construct magnetic Hamiltonian: -gJ μB J·B
         return -g_factor * MU_B_TESLA * (Bx * jx + By * jy + Bz * jz)
 
     def solve_magnetic_system(self, Bx: float, By: float, Bz: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -215,21 +216,22 @@ class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
         the dipole approximation.
 
         Args:
-            initial_state: Initial state vector
-            final_state: Final state vector
+            initial_state: Initial state vector (column vector)
+            final_state: Final state vector (row vector)
 
         Returns:
             float: Scattering intensity between states
         """
         # Get angular momentum operators
-        jx, jy, jz = super().Jx(), super().Jy(), super().Jz()
+        jx, jy, jz = self.j_x(), self.j_y(), self.j_z()
 
         # Calculate matrix elements for each direction
-        matrix_elements = [np.dot(np.dot(initial_state, op), final_state) for op in (jx, jy, jz)]
+        # Order: <final_state|J|initial_state>
+        matrix_elements = [np.dot(final_state, np.dot(op, initial_state)) for op in (jx, jy, jz)]
 
         # Sum over all directions
-        intensity = sum(np.dot(np.conj(elem), elem) for elem in matrix_elements)
-        return float(intensity.real)
+        intensity = sum(np.abs(elem) ** 2 for elem in matrix_elements)
+        return float(intensity.real.item())
 
     def calculate_boltzmann_factor(self, energy_levels: ArrayLike, target_energy: float) -> float:
         """Calculate the temperature-dependent Boltzmann factor.
@@ -412,7 +414,7 @@ class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
             np.ndarray: The 3x3 g-tensor matrix
         """
         # Get angular momentum operators
-        jx, jy, jz = super().Jx(), super().Jy(), super().Jz()
+        jx, jy, jz = self.j_x(), self.j_y(), self.j_z()
 
         # Calculate g-factor
         g_factor = self.calculate_lande_g_factor()
@@ -507,62 +509,6 @@ class CrysFieldExplorer(op.Stevens_Operator, op.Quantum_Operator):
 
         return gxx, gyy, gzz, rotated_g_tensor
 
-
-class Utilities(CrysFieldExplorer):
-    """Utility functions for crystal field calculations.
-
-    This class contains functions to calculate loss functions, construct neutron spectra,
-    magnetization, susceptibility and other common functions needed in CrysFieldExplorer
-    for both optimization and visualization.
-    """
-
-    def __init__(
-        self,
-        magnetic_ion: str,
-        stevens_idx: List[List[int]],
-        alpha: float,
-        beta: float,
-        gamma: float,
-        parameters: Union[Dict[int, float], List[float], np.ndarray],
-        temperature: float,
-        field: List[float],
-    ):
-        super().__init__(magnetic_ion, stevens_idx, alpha, beta, gamma, parameters, temperature, field)
-
-    @staticmethod
-    def lorentzian(x: np.ndarray, area: float, width: float, position: float) -> np.ndarray:
-        """Calculate Lorentzian line shape.
-
-        Args:
-            x: x-axis values
-            area: Area under the curve
-            width: Full width at half maximum
-            position: Peak position
-
-        Returns:
-            np.ndarray: Lorentzian line shape values
-        """
-        return (area / np.pi) * (width / 2) / ((x - position) ** 2 + (width / 2) ** 2)
-
-    @staticmethod
-    def calculate_chi_squared(observed: np.ndarray, expected: np.ndarray, threshold: float = 2e-5) -> float:
-        """Calculate chi-squared statistic.
-
-        Args:
-            observed: Observed values
-            expected: Expected values
-            threshold: Minimum expected value to consider
-
-        Returns:
-            float: Chi-squared statistic
-        """
-        valid_indices = expected >= threshold
-        if not np.any(valid_indices):
-            return 0.0
-
-        diff_squared = (observed[valid_indices] - expected[valid_indices]) ** 2
-        return float(np.sum(diff_squared / expected[valid_indices]))
-
     def calculate_differential_susceptibility(self, temperature: float, sampling: int = 1000) -> float:
         """Calculate magnetic susceptibility using differential method.
 
@@ -597,7 +543,7 @@ class Utilities(CrysFieldExplorer):
 
             # Calculate magnetization components
             magnetization = np.zeros(3)
-            for i, operator in enumerate([self.Jx(), self.Jy(), self.Jz()]):
+            for i, operator in enumerate([self.j_x(), self.j_y(), self.j_z()]):
                 for n in range(len(energies)):
                     magnetization[i] += (
                         (eigenvectors[:, n].H * (g_factor * operator) * eigenvectors[:, n])[0, 0].real
@@ -649,7 +595,7 @@ class Utilities(CrysFieldExplorer):
 
                     # Calculate magnetization components
                     magnetization = np.zeros(3)
-                    for i, operator in enumerate([self.Jx(), self.Jy(), self.Jz()]):
+                    for i, operator in enumerate([self.j_x(), self.j_y(), self.j_z()]):
                         for n in range(dimension):
                             magnetization[i] += (
                                 (eigenvectors[:, n].H * (g_factor * operator) * eigenvectors[:, n])[0, 0].real
@@ -692,7 +638,7 @@ class Utilities(CrysFieldExplorer):
 
             # Calculate susceptibility terms
             chi = 0.0
-            operators = [self.Jx(), self.Jy(), self.Jz()]
+            operators = [self.j_x(), self.j_y(), self.j_z()]
 
             for operator in operators:
                 for n in range(dimension):

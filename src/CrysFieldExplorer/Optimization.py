@@ -32,7 +32,7 @@ class CrystalFieldOptimizer(crs.CrysFieldExplorer):
         gamma: float,
         parameters: Union[Dict[str, float], ArrayLike],
         temperature: float,
-        field: float,
+        field: Union[float, List[float]],  # Can be single value or [Bx, By, Bz]
         true_eigenvalue: ArrayLike,
         true_intensity: ArrayLike,
     ) -> None:
@@ -46,21 +46,29 @@ class CrystalFieldOptimizer(crs.CrysFieldExplorer):
             gamma: Stevens gamma parameter
             parameters: Crystal field parameters
             temperature: Temperature in Kelvin
-            field: Applied magnetic field
+            field: Applied magnetic field (single value for z-direction or [Bx, By, Bz])
             true_eigenvalue: Experimental energy levels
             true_intensity: Experimental intensities
+
+        Raises:
+            ValueError: If parameters length doesn't match stevens_idx length
         """
-        self.stevens_idx = stevens_idx
-        self.alpha = alpha
-        self.beta = beta
-        self.gamma = gamma
-        self.parameters = parameters
-        self.temperature = temperature
-        self.field = field
+        # Convert single field value to [0, 0, Bz] format
+        field_vector = [0.0, 0.0, field] if isinstance(field, (int, float)) else field
+
+        # Validate parameters
+        if isinstance(parameters, dict):
+            if len(parameters) != len(stevens_idx):
+                raise ValueError("Number of parameters must match number of Stevens indices")
+        elif len(parameters) != len(stevens_idx):
+            raise ValueError("Number of parameters must match number of Stevens indices")
+
+        # Call parent class constructor first
+        super().__init__(magnetic_ion, stevens_idx, alpha, beta, gamma, parameters, temperature, field_vector)
+
+        # Store optimization-specific attributes
         self.true_eigenvalue = np.array(true_eigenvalue)
         self.true_intensity = np.array(true_intensity)
-
-        super().__init__(magnetic_ion, stevens_idx, alpha, beta, gamma, parameters, temperature, field)
 
     def test(self):
         print(self.parameters)
@@ -97,7 +105,7 @@ class CrystalFieldOptimizer(crs.CrysFieldExplorer):
         norm = np.sum(self.true_intensity**2)
         return np.sqrt(diff_squared / norm)
 
-    def cma_loss_single(self) -> float:
+    def cma_loss_single(self, *args) -> float:
         """Calculate the loss function for CMA optimization.
 
         Returns:
@@ -111,7 +119,7 @@ class CrystalFieldOptimizer(crs.CrysFieldExplorer):
 
         return ev_loss
 
-    def cma_loss_single_fast(self) -> float:
+    def cma_loss_single_fast(self, *args) -> float:
         """Calculate a faster version of the loss function including intensity.
 
         Returns:
@@ -121,12 +129,11 @@ class CrystalFieldOptimizer(crs.CrysFieldExplorer):
         eigenvalues, eigenvectors, hamiltonian = self.Hamiltonian()
 
         # Calculate neutron scattering intensities more efficiently
-        intensities = self.Neutron_Intensity_fast(1, 0)
-        intensity_array = intensities[1 : len(self.true_intensity) + 1]
+        intensities = self.Neutron_Intensity_fast(1, len(self.true_intensity))
 
         # Calculate both losses
         ev_loss = self._calculate_eigenvalue_loss(hamiltonian, eigenvalues)
-        int_loss = self._calculate_intensity_loss(intensity_array)
+        int_loss = self._calculate_intensity_loss(intensities)
 
         return ev_loss + 10 * int_loss
 
@@ -138,6 +145,30 @@ class CrystalFieldOptimizer(crs.CrysFieldExplorer):
         """
         eigenvalues, eigenvectors, hamiltonian = self.magsolver()
         return self._calculate_eigenvalue_loss(hamiltonian, eigenvalues)
+
+    def Neutron_Intensity_fast(self, start_idx: int, end_idx: int) -> np.ndarray:
+        """Calculate neutron scattering intensities more efficiently.
+
+        This is a faster version of the neutron intensity calculation
+        that only computes the required transitions.
+
+        Args:
+            start_idx: Starting transition index
+            end_idx: Ending transition index
+
+        Returns:
+            numpy.ndarray: Array of calculated intensities
+        """
+        # Get eigenvalues and eigenvectors
+        eigenvalues, eigenvectors, _ = self.Hamiltonian()
+
+        # Calculate transition matrix elements
+        intensities = []
+        for i in range(start_idx, end_idx + 1):
+            intensity = np.abs(np.dot(eigenvectors[:, 0], eigenvectors[:, i])) ** 2
+            intensities.append(intensity)
+
+        return np.array(intensities)
 
 
 def setup_optimization_bounds(n_parameters: int, scale: float = 100.0) -> Tuple[np.ndarray, np.ndarray]:

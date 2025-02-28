@@ -13,7 +13,7 @@ from typing import List, Tuple, Union
 import matplotlib.pyplot as plt
 import numpy as np
 
-from CrysFieldExplorer.CrysFieldExplorer import Utilities
+from CrysFieldExplorer.utilities import Utilities
 
 NumericArray = Union[List[float], np.ndarray]
 
@@ -57,7 +57,7 @@ class Visualizer:
         plt.figure()
         plt.plot(field, mag, ".", markersize=self.marker_size)
         plt.xlabel("Field (T)", fontsize=self.font_size)
-        plt.ylabel("Magnetization (\mu_B)", fontsize=self.font_size)
+        plt.ylabel(r"Magnetization ($\mu_B$)", fontsize=self.font_size)
         plt.xticks(fontsize=self.font_size)
         plt.yticks(fontsize=self.font_size)
         plt.title("Magnetization")
